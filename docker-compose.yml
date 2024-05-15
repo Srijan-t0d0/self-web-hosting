@@ -17,7 +17,7 @@ services:
 
 # current.100projectx.com
   current:
-    tty: true
+    
     restart: always
     image: node:latest
     container_name: current
