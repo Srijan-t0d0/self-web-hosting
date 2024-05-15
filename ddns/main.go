@@ -67,8 +67,18 @@ func main() {
 	API_KEY = os.Getenv("API_KEY")
 	ZONE_ID = os.Getenv("ZONE_ID")
 
-	currentip := getipv6()
-	previp, patchlist := fetchdnsrecords()
+	currentip, err := getipv6()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	previp, patchlist, err := fetchdnsrecords()
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
 	if currentip != previp {
 		fmt.Println("Ip addr changed Updating IP")
@@ -81,10 +91,13 @@ func main() {
 
 }
 
-func fetchdnsrecords() (string, []PatchData) {
+func fetchdnsrecords() (string, []PatchData, error) {
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", ZONE_ID)
 
-	req, _ := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", []PatchData{}, err
+	}
 
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("X-Auth-Email", EMAIL)
@@ -92,11 +105,15 @@ func fetchdnsrecords() (string, []PatchData) {
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		panic(err)
+		return "", []PatchData{}, err
 	}
 
 	defer res.Body.Close()
-	body, _ := io.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", []PatchData{}, err
+	}
+
 	u := GetResponse{}
 	json.Unmarshal([]byte(body), &u)
 
@@ -110,11 +127,11 @@ func fetchdnsrecords() (string, []PatchData) {
 
 	}
 
-	return u.Result[0].Content, retarr
+	return u.Result[0].Content, retarr, nil
 
 }
 
-func patchdnsrecords(dnsrecordid string, newip string, name string) {
+func patchdnsrecords(dnsrecordid string, newip string, name string) error {
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records/%s", ZONE_ID, dnsrecordid)
 	patchdata := map[string]interface{}{
 		"content": newip,
@@ -122,24 +139,39 @@ func patchdnsrecords(dnsrecordid string, newip string, name string) {
 		"type":    "AAAA",
 	}
 
-	payload, _ := json.Marshal(patchdata)
+	payload, err := json.Marshal(patchdata)
+	if err != nil {
+		return err
+	}
 
-	req, _ := http.NewRequest("PATCH", url, bytes.NewBuffer(payload))
+	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
 
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("X-Auth-Email", EMAIL)
 	req.Header.Add("X-Auth-Key", API_KEY)
 
 	http.DefaultClient.Do(req)
+	return nil
 
 }
 
-func getipv6() string {
-	res, _ := http.Get("https://api6.ipify.org")
+func getipv6() (string, error) {
+	res, err := http.Get("https://api6.ipify.org")
 
-	data, _ := io.ReadAll(res.Body)
+	if err != nil {
+		return "", err
+	}
+
+	data, err := io.ReadAll(res.Body)
+
+	if err != nil {
+		return "", err
+	}
 
 	defer res.Body.Close()
 
-	return string(data)
+	return string(data), nil
 }
